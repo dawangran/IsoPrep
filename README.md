@@ -24,7 +24,7 @@ and final BAM/QC materialization for a single sample.
 ## Quick start
 
 ```bash
-python -m IsoPrep.runner \
+isoprep-runner \
   --fastqs a.fastq.gz b.fastq.gz \
   --sample SAMPLE01 \
   --ref ref.fa \
@@ -44,32 +44,43 @@ Under `<workdir>/<sample>/01.data`:
 
 ## CLI parameters
 
-### `python -m IsoPrep.runner`
+Installed console entry points:
 
-| Parameter | Required | Description |
-|---|---|---|
-| `--fastqs` | Yes | One or more FASTQ files for the same sample. |
-| `--sample` | Yes | Sample ID used for output naming. |
-| `--ref` | Yes | Reference FASTA for `minimap2`. |
-| `--whitelist` | Yes | Cell barcode whitelist used by `scan_cb_umi`. |
-| `--valid-list` | No | Optional valid cell list for `add_cb_umi_db`. |
-| `--fulllength` | No | TSO filter mode: `only` or `all` (default: `only`). |
-| `--workdir` | No | Working directory root (default: `work`). |
-| `--threads` | No | Threads per FASTQ task (default: `16`). |
-| `--procs` | No | Number of FASTQs processed in parallel (default: `1`). |
-| `--keep-intermediate` | No | Keep `tmp/` intermediate files. |
-| `--qc-debug` | No | Print per-FASTQ QC parsing debug logs. |
-| `--shards`, `--ham`, `--ratio`, `--jitter`, `--locus-bin`, `--no-gene`, `--fast-h1` | No | Legacy compatibility parameters; currently unused in the no-UMI flow. |
+- `isoprep-runner` → `IsoPrep.runner:main`
+- `isoprep-run-sharded` → `IsoPrep.bin.run_sharded:main`
 
-### `python -m IsoPrep.bin.run_sharded`
+### `isoprep-runner`
 
-| Parameter | Required | Description |
-|---|---|---|
-| `--outdir` | Yes | Output directory for shard results and merged BAM. |
-| `--bam-dir` | Yes | Directory containing input BAM files to shard. |
-| `--shards` | No | Number of shard partitions (default: `32`). |
-| `--threads` | No | Threads for `samtools merge/sort` (default: `32`). |
-| `--keep-shards` | No | Keep per-shard directories after final merged output. |
+| Parameter | Required | Default | Description |
+|---|---|---|---|
+| `--fastqs` | Yes | - | One or more FASTQ files for the same sample. |
+| `--sample` | Yes | - | Sample ID used for output naming. |
+| `--ref` | Yes | - | Reference FASTA for `minimap2`. |
+| `--whitelist` | Yes | - | Cell barcode whitelist used by `scan_cb_umi`. |
+| `--valid-list` | No | `""` | Optional valid cell list for `add_cb_umi_db`. |
+| `--fulllength` | No | `only` | TSO filter mode: `only` or `all`. |
+| `--workdir` | No | `work` | Working directory root. |
+| `--threads` | No | `16` | Threads per FASTQ task. |
+| `--procs` | No | `1` | Number of FASTQs processed in parallel. |
+| `--keep-intermediate` | No | `False` | Keep `tmp/` intermediate files. |
+| `--qc-debug` | No | `False` | Print per-FASTQ QC parsing debug logs. |
+| `--shards` | No | `32` | Legacy compatibility parameter (unused in no-UMI flow). |
+| `--ham` | No | `1` | Legacy compatibility parameter (unused in no-UMI flow). |
+| `--ratio` | No | `2.0` | Legacy compatibility parameter (unused in no-UMI flow). |
+| `--jitter` | No | `10` | Legacy compatibility parameter (unused in no-UMI flow). |
+| `--locus-bin` | No | `1000` | Legacy compatibility parameter (unused in no-UMI flow). |
+| `--no-gene` | No | `False` | Legacy compatibility flag (unused in no-UMI flow). |
+| `--fast-h1` | No | `False` | Legacy compatibility flag (unused in no-UMI flow). |
+
+### `isoprep-run-sharded`
+
+| Parameter | Required | Default | Description |
+|---|---|---|---|
+| `--outdir` | Yes | - | Output directory for shard results and merged BAM. |
+| `--bam-dir` | Yes | - | Directory containing input BAM files to shard. |
+| `--shards` | No | `32` | Number of shard partitions. |
+| `--threads` | No | `32` | Threads for `samtools merge/sort`. |
+| `--keep-shards` | No | `False` | Keep per-shard directories after final merged output. |
 
 ## QC metric definitions
 
@@ -94,5 +105,5 @@ Under `<workdir>/<sample>/01.data`:
 Example:
 
 ```bash
-SCLR_LOG_LEVEL=DEBUG SCLR_LOG_TIME=0 python -m IsoPrep.runner ...
+SCLR_LOG_LEVEL=DEBUG SCLR_LOG_TIME=0 isoprep-runner ...
 ```
