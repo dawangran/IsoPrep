@@ -48,7 +48,7 @@ def main() -> None:
 
     # 1) Shard by CB.
     shard_cmd = (
-        f"{sys.executable} -m sclrtoolkit.bin.shard_by_cb "
+        f"{sys.executable} -m IsoPrep.bin.shard_by_cb "
         f"--outdir {args.outdir} --shards {args.shards} " + " ".join(bam_paths)
     )
     run(shard_cmd)

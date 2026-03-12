@@ -7,7 +7,7 @@ import subprocess
 from pathlib import Path
 from typing import Optional
 
-from sclrtoolkit.logging import setup_logger
+from .logging import setup_logger
 
 logger = setup_logger(__name__)
 

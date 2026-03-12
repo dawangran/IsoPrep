@@ -18,7 +18,7 @@ from pathlib import Path
 from multiprocessing import Pool
 from typing import Optional, Tuple
 
-from sclrtoolkit.logging import setup_logger
+from .logging import setup_logger
 from .utils import safe_mkdir, symlink_force, run_cmd
 from .config import ToolPaths, AdapterModel, Defaults, ShardedParams
 from . import stages
@@ -47,28 +47,35 @@ def fastq_basename(fq_path: Path) -> str:
 
 # -------------------- helpers: parse summaries / counters --------------------
 def parse_cutadapt_summary(bc_dir: Path) -> Tuple[int, int]:
-    """Parse read counts from cutadapt/tsoclip outputs.
+    """Parse raw/full-length read counts from cutadapt and tsoclip outputs.
 
     Priority:
     - `01.barcode/read1_model.out`: `Total reads processed` for raw count.
-    - `01.barcode/tso.out`: `trimmed_written=<N>` for retained full-length count.
+    - `01.barcode/read1_model.out`: `Reads written (...)` as first full-length fallback.
+    - `01.barcode/tso.out`: `trimmed_written=<N>` as preferred retained-read source.
     """
     raw = full_len = 0
-    tso_out = bc_dir / "read1_model.out"
-    txt = _read_text(tso_out)
+
+    read1_out = bc_dir / "read1_model.out"
+    txt = _read_text(read1_out)
     if txt:
         m_raw = re.search(r"Total reads processed:\s+([\d,]+)", txt)
         if m_raw:
             raw = int(m_raw.group(1).replace(",", ""))
-    if full_len == 0:
-        retain_out = bc_dir / "tso.out"
-        t2 = _read_text(retain_out)
-        if t2:
-            m_done = re.search(r"trimmed_written=([\d,]+)", t2)
-            if m_done:
-                full_len = int(m_done.group(1).replace(",", ""))
-    return raw, full_len
 
+        # cutadapt summary fallback, e.g. "Reads written (passing filters): 123"
+        m_written = re.search(r"Reads written(?: \([^)]*\))?:\s+([\d,]+)", txt)
+        if m_written:
+            full_len = int(m_written.group(1).replace(",", ""))
+
+    retain_out = bc_dir / "tso.out"
+    t2 = _read_text(retain_out)
+    if t2:
+        m_done = re.search(r"trimmed_written=([\d,]+)", t2)
+        if m_done:
+            full_len = int(m_done.group(1).replace(",", ""))
+
+    return raw, full_len
 def parse_scan_summary(bc_dir: Path) -> int:
     """Parse corrected barcode read count from scan summary outputs."""
     p = bc_dir / "split.tsv.summary.txt"
@@ -94,7 +101,7 @@ def parse_scan_summary(bc_dir: Path) -> int:
 def parse_addcb_summary(bc_dir: Path) -> int:
     """Parse kept-read count from add_cb_umi summary files."""
     # Match lines like: OUT_KEPT(joined)    399
-    pat = re.compile(r"^OUT_KEPT\(joined\)\s+(\d+)", flags=re.M)
+    pat = re.compile(r"^OUT_KEPT(?:\(joined\))?\s+(\d+)", flags=re.M)
 
     # Try default naming first.
     candidates = [bc_dir / "model.retain.mask.drc.merge.valid.fq.gz.summary.txt"]
@@ -262,7 +269,7 @@ def aggregate_qc_from_tmp(sample_dir: Path, tools: ToolPaths, debug: bool = Fals
 # -------------------- main --------------------
 def main():
     ap = argparse.ArgumentParser(
-        description="sclrtoolkit: single-sample runner (multi-FASTQ -> per-FASTQ BAMs -> merged BAM; QC via file parsing; finals in 01.data)"
+        description="IsoPrep: single-sample runner (multi-FASTQ -> per-FASTQ BAMs -> merged BAM; QC via file parsing; finals in 01.data)"
     )
     ap.add_argument("--fastqs", nargs="+", required=True, help="List of FASTQ files (all belong to the same sample)")
     ap.add_argument("--sample", required=True, help="Sample ID for this run")
@@ -277,7 +284,7 @@ def main():
                     help="Keep tmp/ intermediates. If not set, only final outputs in 01.data are kept.")
     ap.add_argument("--qc-debug", action="store_true",
                     help="Print per-FASTQ QC file paths and parsed numbers")
-    # Legacy sharding parameters (kept for CLI compatibility).
+    # Legacy sharding parameters (currently unused, kept for CLI compatibility).
     ap.add_argument("--shards", type=int, default=ShardedParams.shards)
     ap.add_argument("--ham", type=int, default=ShardedParams.ham)
     ap.add_argument("--ratio", type=float, default=ShardedParams.ratio)
@@ -333,7 +340,6 @@ def main():
     with open(qc_path, "w", encoding="utf-8") as qf:
         qf.write("sample	raw_fastq_reads	model_reads	barcode_corrected_reads	valid_reads	aligned_mapped_reads	umi_dedup_reads\n")
         qf.write(f"{args.sample}	{raw}	{full_len}	{bc_corr}	{valid}	{aligned}	NA")
-        print((f"{args.sample}	{raw}	{full_len}	{bc_corr}	{valid}	{aligned}	NA"))
     logger.info(f"QC summary written: {qc_path}")
 
     # 4) Cleanup (keep only final outputs unless --keep-intermediate).

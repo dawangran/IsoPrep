@@ -5,7 +5,7 @@ import sys
 shard_by_cb.py — Split multiple input BAMs into N shards by CB tag (same CB -> same shard)
 
 Usage:
-  {sys.executable} -m sclrtoolkit.bin.shard_by_cb --outdir work_sharded --shards 32 bam/*.bam
+  {sys.executable} -m IsoPrep.bin.shard_by_cb --outdir work_sharded --shards 32 bam/*.bam
 """
 import argparse, sys, pathlib, pysam, hashlib
 
