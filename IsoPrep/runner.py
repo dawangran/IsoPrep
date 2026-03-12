@@ -338,8 +338,8 @@ def main():
 
     qc_path = final_dir / f"{args.sample}.qc.tsv"
     with open(qc_path, "w", encoding="utf-8") as qf:
-        qf.write("sample	raw_fastq_reads	model_reads	barcode_corrected_reads	valid_reads	aligned_mapped_reads	umi_dedup_reads\n")
-        qf.write(f"{args.sample}	{raw}	{full_len}	{bc_corr}	{valid}	{aligned}	NA")
+        qf.write("sample	raw_fastq_reads	model_reads	barcode_corrected_reads	valid_reads	aligned_mapped_reads\n")
+        qf.write(f"{args.sample}	{raw}	{full_len}	{bc_corr}	{valid}	{aligned}")
     logger.info(f"QC summary written: {qc_path}")
 
     # 4) Cleanup (keep only final outputs unless --keep-intermediate).
