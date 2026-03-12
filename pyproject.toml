@@ -1,0 +1,26 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "IsoPrep"
+version = "0.1.0"
+description = "Long-read single-cell preprocessing toolkit"
+readme = "README.md"
+requires-python = ">=3.9"
+license = {file = "LICENSE"}
+authors = [{name = "IsoPrep contributors"}]
+dependencies = [
+  "pysam",
+]
+
+[project.scripts]
+isoprep-runner = "IsoPrep.runner:main"
+isoprep-run-sharded = "IsoPrep.bin.run_sharded:main"
+
+[tool.setuptools]
+include-package-data = true
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["IsoPrep*"]

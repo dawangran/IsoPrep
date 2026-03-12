@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
+"""Attach CB/UMI tags from parsed TSV records to paired FASTQ reads."""
 
 import argparse, gzip, io, os, re, sys, tempfile, shutil, multiprocessing as mp
 from datetime import datetime
