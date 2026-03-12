@@ -24,7 +24,7 @@ and final BAM/QC materialization for a single sample.
 ## Quick start
 
 ```bash
-isoprep-runner \
+isoprep \
   --fastqs a.fastq.gz b.fastq.gz \
   --sample SAMPLE01 \
   --ref ref.fa \
@@ -46,10 +46,10 @@ Under `<workdir>/<sample>/01.data`:
 
 Installed console entry points:
 
-- `isoprep-runner` → `IsoPrep.runner:main`
+- `isoprep` → `IsoPrep.runner:main`
 - `isoprep-run-sharded` → `IsoPrep.bin.run_sharded:main`
 
-### `isoprep-runner`
+### `isoprep`
 
 | Parameter | Required | Default | Description |
 |---|---|---|---|
@@ -105,5 +105,5 @@ Installed console entry points:
 Example:
 
 ```bash
-SCLR_LOG_LEVEL=DEBUG SCLR_LOG_TIME=0 isoprep-runner ...
+SCLR_LOG_LEVEL=DEBUG SCLR_LOG_TIME=0 isoprep ...
 ```
