@@ -1,13 +1,16 @@
 #!/usr/bin/env python3
-import sys
 # -*- coding: utf-8 -*-
-"""
-shard_by_cb.py — Split multiple input BAMs into N shards by CB tag (same CB -> same shard)
+"""Split input BAM files into N shards by CB tag.
 
-Usage:
-  {sys.executable} -m IsoPrep.bin.shard_by_cb --outdir work_sharded --shards 32 bam/*.bam
+Reads sharing the same ``CB`` tag always map to the same shard ID.
 """
-import argparse, sys, pathlib, pysam, hashlib
+
+import argparse
+import hashlib
+import pathlib
+import sys
+
+import pysam
 
 def parse_args():
     ap = argparse.ArgumentParser()

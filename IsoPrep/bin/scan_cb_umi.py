@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-scan_cb_umi_template_v2_numba_packfastq_corr.py
-------------------------------------------------
+scan_cb_umi.py
+--------------
 在 v2 + numba + 多进程 的基础上，加入 CB 校正功能：
 - 白名单最小 Hamming 距离=3 前提下：
   * EXACT / HAM1：直接唯一纠正；
@@ -12,17 +12,17 @@ scan_cb_umi_template_v2_numba_packfastq_corr.py
 
 用法示例：
   # 不校正（只提取）
-  python scan_cb_umi_template_v2_numba_packfastq_corr.py in.fastq.gz \
+  python -m IsoPrep.bin.scan_cb_umi in.fastq.gz \
     --out_tsv out.tsv --out_fastq out.fastq.gz \
     --threads 8 --mp_chunksize 256 --batch 100000
 
   # 开启校正（EXACT/HAM1）
-  python scan_cb_umi_template_v2_numba_packfastq_corr.py in.fastq.gz \
+  python -m IsoPrep.bin.scan_cb_umi in.fastq.gz \
     --out_tsv out.tsv --out_fastq out.fastq.gz \
     --threads 8 --cb_correct --whitelist whitelist.txt
 
   # 开启校正 + 允许 HAM2 且唯一最小 的召回
-  python scan_cb_umi_template_v2_numba_packfastq_corr.py in.fastq.gz \
+  python -m IsoPrep.bin.scan_cb_umi in.fastq.gz \
     --out_tsv out.tsv --out_fastq out.fastq.gz \
     --threads 8 --cb_correct --whitelist whitelist.txt --cb_allow_ham2_unique
 """

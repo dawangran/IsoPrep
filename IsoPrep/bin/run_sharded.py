@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""Shard BAMs by cell barcode (CB) and optionally merge shard outputs.
+"""Run CB-based sharding and merge shard BAM outputs.
 
-This utility keeps the sharding workflow but removes the deprecated
-`umi_correct_longreads` reduction stage.
+This script intentionally excludes UMI reduction and only performs:
+1) shard by CB, 2) merge/sort/index shard BAMs.
 """
 
 from __future__ import annotations
