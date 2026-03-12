@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""runner.py — Single-sample multi-FASTQ orchestrator
-(unchanged pipeline; QC via file parsing; finals in 01.data).
+"""Single-sample multi-FASTQ orchestrator.
+
+Pipeline behavior is intentionally preserved, while QC statistics are parsed
+from stage outputs and final artifacts are written to ``01.data``.
 """
 
 from __future__ import annotations
@@ -16,7 +18,7 @@ from pathlib import Path
 from multiprocessing import Pool
 from typing import Optional, Tuple
 
-from sclrtoolkit.logging import setup_logger
+from .logging import setup_logger
 from .utils import safe_mkdir, symlink_force, run_cmd
 from .config import ToolPaths, AdapterModel, Defaults, ShardedParams
 from . import stages
@@ -45,35 +47,37 @@ def fastq_basename(fq_path: Path) -> str:
 
 # -------------------- helpers: parse summaries / counters --------------------
 def parse_cutadapt_summary(bc_dir: Path) -> Tuple[int, int]:
-    """
-    优先解析 01.barcode/read1_model.out：
-      - 'Total reads processed:' -> raw
-      - 'Reads written (passing filters):' 或 'Reads written:' -> full-length
-    若 full-length 仍取不到，回退到 01.barcode/tso.out 的 'Done ... <N> reads'
+    """Parse raw/full-length read counts from cutadapt and tsoclip outputs.
+
+    Priority:
+    - `01.barcode/read1_model.out`: `Total reads processed` for raw count.
+    - `01.barcode/read1_model.out`: `Reads written (...)` as first full-length fallback.
+    - `01.barcode/tso.out`: `trimmed_written=<N>` as preferred retained-read source.
     """
     raw = full_len = 0
-    tso_out = bc_dir / "read1_model.out"
-    txt = _read_text(tso_out)
+
+    read1_out = bc_dir / "read1_model.out"
+    txt = _read_text(read1_out)
     if txt:
         m_raw = re.search(r"Total reads processed:\s+([\d,]+)", txt)
         if m_raw:
             raw = int(m_raw.group(1).replace(",", ""))
-    if full_len == 0:
-        retain_out = bc_dir / "tso.out"
-        t2 = _read_text(retain_out)
-        if t2:
-            m_done = re.search(r"trimmed_written=([\d,]+)", t2)
-            if m_done:
-                full_len = int(m_done.group(1).replace(",", ""))
-    print(raw, full_len)
-    return raw, full_len
 
+        # cutadapt summary fallback, e.g. "Reads written (passing filters): 123"
+        m_written = re.search(r"Reads written(?: \([^)]*\))?:\s+([\d,]+)", txt)
+        if m_written:
+            full_len = int(m_written.group(1).replace(",", ""))
+
+    retain_out = bc_dir / "tso.out"
+    t2 = _read_text(retain_out)
+    if t2:
+        m_done = re.search(r"trimmed_written=([\d,]+)", t2)
+        if m_done:
+            full_len = int(m_done.group(1).replace(",", ""))
+
+    return raw, full_len
 def parse_scan_summary(bc_dir: Path) -> int:
-    """
-    解析 01.barcode/split.tsv.summary.txt：
-      优先 FASTQ_OUTPUT；回退 CORR_BOTH_OK；
-      若该文件缺失，弱兜底扫描同目录其他文本中的 'FASTQ output: <N>'
-    """
+    """Parse corrected barcode read count from scan summary outputs."""
     p = bc_dir / "split.tsv.summary.txt"
     txt = _read_text(p)
     if txt:
@@ -83,7 +87,7 @@ def parse_scan_summary(bc_dir: Path) -> int:
         if m:
             return int(m.group(1))
     else:
-        # 兜底：某些场景仅保留了 stdout
+        # Fallback: some runs only preserve stdout logs.
         for f in (bc_dir / "split.tsv", bc_dir / "scan_cb_umi.log"):
             t = _read_text(f)
             if not t:
@@ -95,18 +99,13 @@ def parse_scan_summary(bc_dir: Path) -> int:
 
 
 def parse_addcb_summary(bc_dir: Path) -> int:
-    """
-    解析 add_cb_umi_db 的 summary：
-      1) 优先读默认文件名：model.retain.mask.drc.merge.valid.fq.gz.summary.txt
-      2) 否则在该目录下的 *.summary.txt 中寻找第一处 'OUT_KEPT(joined) <N>'
-    若未找到则返回 0
-    """
-    # 匹配形如: OUT_KEPT(joined)    399
-    pat = re.compile(r"^OUT_KEPT\(joined\)\s+(\d+)", flags=re.M)
+    """Parse kept-read count from add_cb_umi summary files."""
+    # Match lines like: OUT_KEPT(joined)    399
+    pat = re.compile(r"^OUT_KEPT(?:\(joined\))?\s+(\d+)", flags=re.M)
 
-    # 先尝试默认命名
+    # Try default naming first.
     candidates = [bc_dir / "model.retain.mask.drc.merge.valid.fq.gz.summary.txt"]
-    # 再补充通配
+    # Then include wildcard candidates.
     candidates += [p for p in sorted(bc_dir.glob("*.summary.txt")) if p not in candidates]
 
     for p in candidates:
@@ -148,7 +147,7 @@ def process_one_fastq(
 ) -> Path:
     """
     Process one FASTQ to a tagged BAM under tmp/, and symlink it into final_dir.
-    Return the symlinked BAM path (for run_sharded consumption).
+    Return the symlinked BAM path for downstream sample-level merge.
     """
     fq = fq.resolve()
     fq_basename = fastq_basename(fq)
@@ -229,7 +228,6 @@ def aggregate_qc_from_tmp(sample_dir: Path, tools: ToolPaths, debug: bool = Fals
             if debug:
                 logger.info(f"[QC-debug] {fq_dir.name} add_cb: search in {bc_dir} -> valid={v}")
             valid += v
-            print(v)
 
         # 对齐 BAM
         aln_bam = None
@@ -271,14 +269,14 @@ def aggregate_qc_from_tmp(sample_dir: Path, tools: ToolPaths, debug: bool = Fals
 # -------------------- main --------------------
 def main():
     ap = argparse.ArgumentParser(
-        description="sclrtoolkit: single-sample runner (multi-FASTQ -> per-FASTQ BAMs -> run_sharded; QC via file parsing; finals in 01.data)"
+        description="IsoPrep: single-sample runner (multi-FASTQ -> per-FASTQ BAMs -> merged BAM; QC via file parsing; finals in 01.data)"
     )
     ap.add_argument("--fastqs", nargs="+", required=True, help="List of FASTQ files (all belong to the same sample)")
     ap.add_argument("--sample", required=True, help="Sample ID for this run")
     ap.add_argument("--ref", required=True, help="Reference FASTA for minimap2")
     ap.add_argument("--whitelist", required=True, help="CB whitelist for scan_cb_umi")
     ap.add_argument("--valid-list", default="", help="valid.cell.tsv (optional)")
-    ap.add_argument("--fulllength", default="only", help="fulllength [only/all]")
+    ap.add_argument("--fulllength", choices=["only", "all"], default="only", help="TSO filtering mode")
     ap.add_argument("--workdir", default="work", help="Working directory")
     ap.add_argument("--threads", type=int, default=16, help="Threads per FASTQ")
     ap.add_argument("--procs", type=int, default=1, help="Parallel FASTQs")
@@ -286,14 +284,14 @@ def main():
                     help="Keep tmp/ intermediates. If not set, only final outputs in 01.data are kept.")
     ap.add_argument("--qc-debug", action="store_true",
                     help="Print per-FASTQ QC file paths and parsed numbers")
-    # run_sharded controls（保持原逻辑）
+    # Legacy sharding parameters (currently unused; retained for CLI compatibility).
     ap.add_argument("--shards", type=int, default=ShardedParams.shards)
     ap.add_argument("--ham", type=int, default=ShardedParams.ham)
     ap.add_argument("--ratio", type=float, default=ShardedParams.ratio)
     ap.add_argument("--jitter", type=int, default=ShardedParams.jitter)
     ap.add_argument("--locus-bin", type=int, default=ShardedParams.locus_bin)
-    ap.add_argument("--no-gene", action="store_true", default=True)
-    ap.add_argument("--fast-h1", action="store_true", default=True)
+    ap.add_argument("--no-gene", action="store_true", default=False)
+    ap.add_argument("--fast-h1", action="store_true", default=False)
     args = ap.parse_args()
 
     fastqs = [Path(f).resolve() for f in args.fastqs]
@@ -320,7 +318,7 @@ def main():
             process_one_fastq(*t)
 
     
-    # 2) UMI correction skipped by request — merge per-FASTQ tag BAMs, then sort & index (no UMI dedup)
+    # 2) UMI correction is intentionally skipped: merge per-FASTQ tag BAMs, then sort/index.
     # Collect per-FASTQ BAMs from final_dir
     tag_bams = sorted([p for p in final_dir.glob(f"{args.sample}.*.tag.bam") if p.is_file()])
     if not tag_bams:
@@ -331,7 +329,7 @@ def main():
     run_cmd(f"{tools.samtools} sort -@ {args.threads} -o {final_dedup_sorted} {merged_bam}")
     run_cmd(f"{tools.samtools} index -@ {max(1, args.threads//2)} {final_dedup_sorted}")
 
-    # 3) QC aggregation (sum over ALL FASTQs) + -dedup from final BAM
+    # 3) Aggregate QC metrics across all FASTQs.
     raw, full_len, bc_corr, valid, aligned = aggregate_qc_from_tmp(sample_dir, tools, debug=args.qc_debug)
 
     bai = final_dir / f"{args.sample}.bam.bai"
@@ -340,22 +338,21 @@ def main():
 
     qc_path = final_dir / f"{args.sample}.qc.tsv"
     with open(qc_path, "w", encoding="utf-8") as qf:
-        qf.write("sample	raw_fastq_reads	model_reads	barcode_corrected_reads	valid_reads	aligned_mapped_reads	umi_dedup_reads\n")
-        qf.write(f"{args.sample}	{raw}	{full_len}	{bc_corr}	{valid}	{aligned}	NA")
-        print((f"{args.sample}	{raw}	{full_len}	{bc_corr}	{valid}	{aligned}	NA"))
+        qf.write("sample	raw_fastq_reads	model_reads	barcode_corrected_reads	valid_reads	aligned_mapped_reads\n")
+        qf.write(f"{args.sample}	{raw}	{full_len}	{bc_corr}	{valid}	{aligned}")
     logger.info(f"QC summary written: {qc_path}")
 
-    # 4) Cleanup (keep only final outputs unless --keep-intermediate)
+    # 4) Cleanup (keep only final outputs unless --keep-intermediate).
     if not args.keep_intermediate:
-        # remove tmp/
+        # Remove tmp/.
         tmp_root = sample_dir / "tmp"
         if tmp_root.exists():
             shutil.rmtree(tmp_root, ignore_errors=True)
-        # keep only final .bam/.bai and QC
+        # Keep only final .bam/.bai and QC summary.
         keep = {
             f"{args.sample}.bam",
             f"{args.sample}.bam.bai",
-            f"{args.sample}.qc.tsv",  # 如只想保留 BAM/BAI 两个文件，删除这一行
+            f"{args.sample}.qc.tsv",
         }
         for p in final_dir.iterdir():
             if p.name not in keep:
