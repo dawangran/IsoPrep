@@ -9,14 +9,13 @@ description = "Long-read single-cell preprocessing toolkit"
 readme = "README.md"
 requires-python = ">=3.9"
 license = {file = "LICENSE"}
-authors = [{name = "IsoPrep contributors"}]
+authors = [{name = "Dawn"}]
 dependencies = [
   "pysam",
 ]
 
 [project.scripts]
 isoprep = "IsoPrep.runner:main"
-isoprep-run-sharded = "IsoPrep.bin.run_sharded:main"
 
 [tool.setuptools]
 include-package-data = true
