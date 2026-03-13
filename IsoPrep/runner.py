@@ -284,14 +284,14 @@ def main():
                     help="Keep tmp/ intermediates. If not set, only final outputs in 01.data are kept.")
     ap.add_argument("--qc-debug", action="store_true",
                     help="Print per-FASTQ QC file paths and parsed numbers")
-    # Legacy sharding parameters (currently unused, kept for CLI compatibility).
+    # Legacy sharding parameters (currently unused; retained for CLI compatibility).
     ap.add_argument("--shards", type=int, default=ShardedParams.shards)
     ap.add_argument("--ham", type=int, default=ShardedParams.ham)
     ap.add_argument("--ratio", type=float, default=ShardedParams.ratio)
     ap.add_argument("--jitter", type=int, default=ShardedParams.jitter)
     ap.add_argument("--locus-bin", type=int, default=ShardedParams.locus_bin)
-    ap.add_argument("--no-gene", action="store_true", default=True)
-    ap.add_argument("--fast-h1", action="store_true", default=True)
+    ap.add_argument("--no-gene", action="store_true", default=False)
+    ap.add_argument("--fast-h1", action="store_true", default=False)
     args = ap.parse_args()
 
     fastqs = [Path(f).resolve() for f in args.fastqs]

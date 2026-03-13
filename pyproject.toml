@@ -15,7 +15,7 @@ dependencies = [
 ]
 
 [project.scripts]
-isoprep-runner = "IsoPrep.runner:main"
+isoprep = "IsoPrep.runner:main"
 isoprep-run-sharded = "IsoPrep.bin.run_sharded:main"
 
 [tool.setuptools]
