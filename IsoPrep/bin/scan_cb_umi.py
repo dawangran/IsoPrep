@@ -3,29 +3,36 @@
 """
 scan_cb_umi.py
 --------------
-在 v2 + numba + 多进程 的基础上，加入 CB 校正功能：
-- 白名单最小 Hamming 距离=3 前提下：
-  * EXACT / HAM1：直接唯一纠正；
-  * (可选) HAM2 且全表唯一最小：若传 --cb_allow_ham2_unique，则允许召回纠正。
-- 开启校正 (--cb_correct) 时：仅当 CB1 与 CB2 均校正成功( EXCAT/HAM1/(可选)HAM2_MIN_UNIQ ) 且提取成功，才写入 FASTQ。
-- 未开启校正时：行为与原先一致（提取成功就写 FASTQ）。
+CB/UMI scanner with optional whitelist-based barcode correction.
 
-用法示例：
-  # 不校正（只提取）
-  python -m IsoPrep.bin.scan_cb_umi in.fastq.gz \
-    --out_tsv out.tsv --out_fastq out.fastq.gz \
-    --threads 8 --mp_chunksize 256 --batch 100000
+Built on the v2 + numba + multiprocessing workflow, with CB correction:
+- Under the whitelist assumption (minimum Hamming distance of 3):
+  * EXACT / HAM1: unique direct correction.
+  * (Optional) HAM2 with globally unique minimum: enable with
+    --cb_allow_ham2_unique.
+- When correction is enabled (--cb_correct): write FASTQ only when both CB1
+  and CB2 are corrected successfully
+  (EXACT/HAM1/(optional)HAM2_MIN_UNIQ) and extraction succeeds.
+- When correction is disabled: behavior matches previous logic
+  (write FASTQ on extraction success).
 
-  # 开启校正（EXACT/HAM1）
-  python -m IsoPrep.bin.scan_cb_umi in.fastq.gz \
-    --out_tsv out.tsv --out_fastq out.fastq.gz \
-    --threads 8 --cb_correct --whitelist whitelist.txt
+Examples:
+  Extraction only (no correction):
+    python -m IsoPrep.bin.scan_cb_umi in.fastq.gz \
+      --out_tsv out.tsv --out_fastq out.fastq.gz \
+      --threads 8 --mp_chunksize 256 --batch 100000
 
-  # 开启校正 + 允许 HAM2 且唯一最小 的召回
-  python -m IsoPrep.bin.scan_cb_umi in.fastq.gz \
-    --out_tsv out.tsv --out_fastq out.fastq.gz \
-    --threads 8 --cb_correct --whitelist whitelist.txt --cb_allow_ham2_unique
+  Enable correction (EXACT/HAM1):
+    python -m IsoPrep.bin.scan_cb_umi in.fastq.gz \
+      --out_tsv out.tsv --out_fastq out.fastq.gz \
+      --threads 8 --cb_correct --whitelist whitelist.txt
+
+  Enable correction + HAM2 unique-minimum rescue:
+    python -m IsoPrep.bin.scan_cb_umi in.fastq.gz \
+      --out_tsv out.tsv --out_fastq out.fastq.gz \
+      --threads 8 --cb_correct --whitelist whitelist.txt --cb_allow_ham2_unique
 """
+
 import argparse, gzip, sys, multiprocessing as mp
 from datetime import datetime
 
@@ -79,7 +86,7 @@ def s2a(s):
 if USE_NUMBA:
     @nb.njit(cache=True)
     def t_match_score_n(tchar, rchar, score_match, score_mismatch):
-        # 模板 'N'(5) 通配：按匹配给分
+        # Template base 'N'(5) is wildcard; score as a match.
         return score_match if (tchar == 5 or tchar == rchar) else score_mismatch
 
     @nb.njit(cache=True)
@@ -203,7 +210,7 @@ def sw_local_best_py(seq: str, ref: str, max_k: int):
     if edits > max_k: return None
     return (i_start, i_end, edits)
 
-def nw_semiglobal_template_py(read_sub: str, template: str, score_match=2, score_mismatch=-2, score_gap=-2):
+def nw_semiglobal_template_py(read_sub: str, template: str, score_gap=-2):
     n = len(read_sub); m = len(template)
     NEG_INF = -10**9
     dp = [[NEG_INF]*(m+1) for _ in range(n+1)]
@@ -291,7 +298,7 @@ def collect_segment_nblock(a_read, a_temp, j_start, j_end, read_offset, raw_seq)
             seq.append(r)
             if len(seq) == 10:
                 return ''.join(seq), pos_first
-    # fallback：如果对齐不足 10bp，尝试从 N 区末后续 read 碱基补足
+    # Fallback: if alignment yields <10 bp, append downstream read bases after N block.
     block_cols = []
     temp_idx = -1
     for k, t in enumerate(a_temp):
@@ -310,7 +317,7 @@ def collect_segment_nblock(a_read, a_temp, j_start, j_end, read_offset, raw_seq)
                 seq.append(r)
                 if len(seq) == 10:
                     return ''.join(seq), pos_first
-    # 再不行：若已知 pos_first，直接从原串切 10bp
+    # Final fallback: if pos_first is known, slice 10 bp directly from raw sequence.
     if pos_first is not None and pos_first + 10 <= len(raw_seq):
         start = pos_first
         return raw_seq[start:start+10], start
@@ -336,7 +343,7 @@ def hamdist(a, b):
 
 def correct_cb_10mer(obs, wl, allow_ham2_unique=False):
     """
-    返回 (corr, status, dmin)
+    Return (corr, status, dmin).
     status ∈ {"EXACT","HAM1","HAM2_MIN_UNIQ","UNCORR"}
     """
     if obs is None or len(obs) != 10:
@@ -409,7 +416,7 @@ def worker(task):
         s1,e1,_ = hit1
         start = s1
         read_sub = seq[start:]
-        ar, at, _ = nw_semiglobal_template_py(read_sub, T, score_match, score_mismatch, score_gap)
+        ar, at, _ = nw_semiglobal_template_py(read_sub, T, score_gap)
 
     # 2) edits (for QC)
     ed1 = edits_in_range(ar, at, j0, j1)
@@ -451,7 +458,7 @@ def worker(task):
                 ed1, ed2, ed3, ed4,
                 None)
 
-    # 6) build FASTQ SEQ (使用“纠正后的 CB”，未纠正则是原值/None -> 用 raw 兜底)
+    # 6) Build FASTQ SEQ (prefer corrected CB; fallback to raw when correction is unavailable).
     c1 = cb1_corr if cb1_corr is not None else cb1_raw
     c2 = cb2_corr if cb2_corr is not None else cb2_raw
     concat = f"{c1}{c2}{umi}"
@@ -480,21 +487,21 @@ def main():
     ap.add_argument("--batch", type=int, default=100000)
 
     # correction options
-    ap.add_argument("--cb_correct", action="store_true", help="启用 CB1/CB2 纠错")
-    ap.add_argument("--whitelist", type=str, default=None, help="白名单路径，每行一个10bp（A/C/G/T）")
+    ap.add_argument("--cb_correct", action="store_true", help="Enable CB1/CB2 correction.")
+    ap.add_argument("--whitelist", type=str, default=None, help="Whitelist path; one 10bp barcode per line (A/C/G/T).")
     ap.add_argument("--cb_allow_ham2_unique", action="store_true",
-                    help="允许 Hamming=2 且唯一最小的召回纠正")
+                    help="Allow Hamming=2 rescue when the minimum is unique.")
 
     args = ap.parse_args()
 
     if args.cb_correct and not args.whitelist:
-        log("ERROR: --cb_correct 需要提供 --whitelist"); sys.exit(2)
+        log("ERROR: --whitelist is required when --cb_correct is enabled"); sys.exit(2)
 
     whitelist = None
     if args.cb_correct:
         whitelist = load_whitelist(args.whitelist)
         if len(whitelist) == 0:
-            log("ERROR: 白名单为空或无有效10bp条目"); sys.exit(2)
+            log("ERROR: whitelist is empty or has no valid 10bp entries"); sys.exit(2)
         log(f"Whitelist loaded: {len(whitelist)} entries.")
 
     poly = "T"*args.polyT_min
@@ -519,7 +526,7 @@ def main():
         allow_ham2=args.cb_allow_ham2_unique
     )
 
-    # TSV header（含纠错字段）
+    # TSV header (includes correction fields).
     header = "\t".join([
         "read_id",
         "cb1_raw","cb1_pos","cb1_corr","cb1_status","cb1_dmin",
@@ -538,7 +545,7 @@ def main():
     total = kept = 0
     stat = {"OK":0, "NO_TAG1":0, "EXTRACTION_FALLBACK_FAILED":0, "QUAL_FAIL":0}
 
-    # 校正统计（仅在 --cb_correct 时使用）
+    # Correction stats (used only when --cb_correct is enabled).
     if args.cb_correct:
         for k in ["CORR_CB1_EXACT","CORR_CB1_HAM1","CORR_CB1_HAM2","CORR_CB1_UNCORR",
                   "CORR_CB2_EXACT","CORR_CB2_HAM1","CORR_CB2_HAM2","CORR_CB2_UNCORR",
@@ -561,7 +568,7 @@ def main():
             for x in (ed1,ed2,ed3,ed4):
                 total_ed += (x or 0)
 
-            # 统计校正分布（仅在启用校正时）
+            # Count correction-status distribution (only when correction is enabled).
             if args.cb_correct:
                 # CB1
                 if cb1_status == "EXACT": stat["CORR_CB1_EXACT"] += 1
@@ -574,7 +581,7 @@ def main():
                 elif cb2_status == "HAM2_MIN_UNIQ": stat["CORR_CB2_HAM2"] += 1
                 else: stat["CORR_CB2_UNCORR"] += 1
 
-            # TSV 行
+            # TSV row
             out_tsv.write("\t".join([
                 rid,
                 cb1_raw or "", str(cb1_pos) if cb1_pos is not None else "",
@@ -590,7 +597,7 @@ def main():
 
             stat[status] = stat.get(status, 0) + 1
 
-            # 是否写 FASTQ
+            # Whether to write FASTQ
             write_fastq = False
             if status == "OK" and fq_rec is not None:
                 if args.cb_correct:
@@ -605,7 +612,7 @@ def main():
             if write_fastq:
                 out_fq.write(fq_rec); kept += 1
 
-        # 主循环
+        # Main loop
         for rid, seq, qual in parse_fastq(fh):
             batch.append((idx0, rid, seq, qual, conf)); idx0 += 1; total += 1
             if len(batch) >= args.batch:

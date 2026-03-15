@@ -178,14 +178,15 @@ def process_one_fastq(
 # -------------------- post-hoc QC aggregator (file parsing, robust paths) --------------------
 def aggregate_qc_from_tmp(sample_dir: Path, tools: ToolPaths, debug: bool = False) -> Tuple[int, int, int, int, int]:
     """
-    扫描 sample_dir/tmp 下每个 FASTQ 子目录，累加：
-      raw（cutadapt #1；read1_model.out）
-      full_len（cutadapt #1；read1_model.out；回退 tso.out）
-      bc_corrected（split.tsv.summary.txt：FASTQ_OUTPUT 优先，回退 CORR_BOTH_OK）
-      valid（*.summary.txt：KEPT）
-      aligned_mapped（samtools view -c -F 4 对齐 BAM）
-    兼容目录名：01.barcode 或 barcode；02.align 或 align；必要时回退 rglob。
-    同时打印每个 FASTQ 子目录的解析结果；当 debug=True 时打印所用文件路径。
+    Scan each FASTQ subdirectory under ``sample_dir/tmp`` and aggregate:
+      raw (cutadapt #1; read1_model.out)
+      full_len (cutadapt #1; read1_model.out; fallback to tso.out)
+      bc_corrected (split.tsv.summary.txt: FASTQ_OUTPUT preferred, fallback CORR_BOTH_OK)
+      valid (*.summary.txt: KEPT)
+      aligned_mapped (samtools view -c -F 4 on aligned BAM)
+    Compatible directory names: ``01.barcode`` or ``barcode``; ``02.align`` or ``align``;
+    and fallback to ``rglob`` search when needed.
+    Also logs parsed QC per FASTQ subdirectory; when ``debug=True`` it logs source file paths.
     """
     tmp_root = sample_dir / "tmp"
     if not tmp_root.exists():
@@ -229,7 +230,7 @@ def aggregate_qc_from_tmp(sample_dir: Path, tools: ToolPaths, debug: bool = Fals
                 logger.info(f"[QC-debug] {fq_dir.name} add_cb: search in {bc_dir} -> valid={v}")
             valid += v
 
-        # 对齐 BAM
+        # aligned BAM
         aln_bam = None
         if aln_dir:
             cand = aln_dir / "aln.cDNA.bam"
@@ -252,7 +253,7 @@ def aggregate_qc_from_tmp(sample_dir: Path, tools: ToolPaths, debug: bool = Fals
         else:
             logger.warning(f"[QC] aligned BAM not found under: {aln_dir or fq_dir}")
 
-        # 汇总日志：每个 FASTQ 子目录的 QC
+        # summary log: QC for each FASTQ subdirectory
         logger.info(
             f"[QC] {fq_dir.name}: raw={raw}, full_len={full_len}, "
             f"bc_corrected={corr}, valid={valid}, aligned_mapped={aln}"
