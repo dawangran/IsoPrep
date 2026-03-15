@@ -8,12 +8,26 @@ artifact path for the next stage.
 
 from pathlib import Path
 from typing import Literal
+import shlex
 
 from .logging import setup_logger
 from .config import ToolPaths, AdapterModel, Defaults
 from .utils import run_cmd, safe_mkdir
 
 logger = setup_logger(__name__)
+
+
+def _bin_script(name: str) -> Path:
+    """Return absolute path to a bundled executable script in ``IsoPrep/bin``."""
+    return Path(__file__).resolve().parent / "bin" / name
+
+
+def _python_entrypoint(module: str, script_name: str) -> str:
+    """Prefer a local bundled script path; fallback to module execution if absent."""
+    script = _bin_script(script_name)
+    if script.exists():
+        return shlex.quote(str(script))
+    return f"-m {module}"
 
 def cutadapt_stage(
     fq: Path,
@@ -62,7 +76,7 @@ def scan_cb_umi(r1_slice: Path, outdir: Path, whitelist: Path, threads: int, too
     r1_flt = outdir / "01.barcode" / "model.retain.drc_1.filter.fq.gz"
     cmd = (
         f'pigz -dc {r1_slice} | '
-        f'{tools.python} -m IsoPrep.bin.scan_cb_umi - '
+        f'{tools.python} {_python_entrypoint("IsoPrep.bin.scan_cb_umi", "scan_cb_umi.py")} - '
         f'--out_tsv {out_tsv} '
         f'--out_fastq {r1_flt} '
         f'--threads {threads} --mp_chunksize 256 --batch 100000 '
@@ -75,7 +89,7 @@ def add_cb_umi(r1_fq: Path, r2_fq: Path, outdir: Path, sample: str, valid_list: 
     """Attach corrected CB/UMI tags and return merged FASTQ."""
     merged = outdir / "01.barcode" / "model.retain.mask.drc.merge.valid.fq.gz"
     cmd = (
-        f'{tools.python} -m IsoPrep.bin.add_cb_umi_db '
+        f'{tools.python} {_python_entrypoint("IsoPrep.bin.add_cb_umi_db", "add_cb_umi_db.py")} '
         f'--r1 {r1_fq} --r2 {r2_fq} '
         f'--out {merged} '
         f'--model {model.cb_umi_model} '
