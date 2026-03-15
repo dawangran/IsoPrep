@@ -7,7 +7,7 @@ name = "isoprep"
 version = "0.1.0"
 description = "Long-read single-cell preprocessing toolkit"
 readme = "README.md"
-requires-python = ">=3.9"
+requires-python = ">=3.8"
 license = {file = "LICENSE"}
 authors = [{name = "Dawn"}]
 dependencies = [
