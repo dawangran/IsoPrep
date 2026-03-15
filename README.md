@@ -1,7 +1,3 @@
-<p align="center">
-  <img src="assets/isoprep-logo.svg" alt="IsoPrep logo" width="180" />
-</p>
-
 <h1 align="center">IsoPrep</h1>
 
 <p align="center">
