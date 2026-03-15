@@ -21,6 +21,12 @@ and final BAM/QC materialization for a single sample.
 - `IsoPrep/logging.py`: centralized logger setup.
 - `IsoPrep/bin/`: command-line utilities used by the pipeline (barcode scan, sharding helpers, etc.).
 
+## Naming
+
+- Distribution/package name for installation is `isoprep` (lowercase).
+- Python source package remains `IsoPrep` (module import path).
+- CLI entrypoint is `isoprep`.
+
 ## Quick start
 
 ```bash
