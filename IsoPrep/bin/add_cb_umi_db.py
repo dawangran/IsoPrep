@@ -37,7 +37,7 @@ _id_strip_re = re.compile(r'(/1|/2)$')
 
 def core_read_id(name_line: str) -> str:
     """
-    提取 FASTQ 名称的核心ID：@后到首个空格；去掉 /1 或 /2。
+    Extract FASTQ core read ID: after '@' up to first whitespace; strip trailing /1 or /2.
     """
     s = name_line.strip()
     if s.startswith("@"):
@@ -49,7 +49,7 @@ def core_read_id(name_line: str) -> str:
 # ---------- fastq iter ----------
 def iter_fastq(path: str, buffer_mb: int):
     """
-    逐条读 FASTQ，yield (name_line, seq, plus_line, qual)
+    Stream FASTQ records and yield (name_line, seq, plus_line, qual).
     """
     with open_in_text(path, buffer_mb) as fh:
         while True:
@@ -67,7 +67,7 @@ def iter_fastq(path: str, buffer_mb: int):
 def parse_model_literal(model_str: str):
     m = model_str.strip().upper()
     if not m or any(c not in "BU" for c in m):
-        raise ValueError("字面模型仅允许 'B' 与 'U'")
+        raise ValueError("Literal model only allows 'B' and 'U'")
     blocks_B = []; blocks_U = []
     i = 0; n = len(m)
     while i < n:
@@ -81,11 +81,11 @@ def parse_model_literal(model_str: str):
 def parse_model_compact(model_str: str):
     s = model_str.strip().upper()
     if not re.fullmatch(r'(?:[BU]\d+)+', s):
-        raise ValueError("简写模型格式错误，示例：B20U10 或 B20U10B5")
+        raise ValueError("Compact model format error, e.g. B20U10 or B20U10B5")
     pos = 0; blocks_B = []; blocks_U = []
     for m in re.finditer(r'([BU])(\d+)', s):
         ch = m.group(1); ln = int(m.group(2))
-        if ln <= 0: raise ValueError("模型长度必须为正整数")
+        if ln <= 0: raise ValueError("Model segment length must be a positive integer")
         (blocks_B if ch == 'B' else blocks_U).append((pos, ln))
         pos += ln
     return blocks_B, blocks_U, pos
@@ -120,7 +120,7 @@ def load_valid_map(path: str, cb_len: int):
 
 # ---------- hashing ----------
 def bucket_index(read_id: str, n_shards: int) -> int:
-    # 简单稳定哈希；避免 Python hash 随机化：使用自定义FNV-like
+    # Simple stable hash; avoid Python hash randomization with a custom FNV-like hash.
     h = 2166136261
     for ch in read_id.encode('utf-8'):
         h ^= ch
@@ -130,7 +130,7 @@ def bucket_index(read_id: str, n_shards: int) -> int:
 # ---------- pass 1: write R1 buckets (id -> cb,umi) ----------
 def pass1_r1_to_buckets(r1_path: str, buffer_mb: int, cb_blocks, umi_blocks, model_len: int,
                         uppercase: bool, n_shards: int, tmpdir: str) -> Tuple[int,int]:
-    # 打开每个桶的 TSV 文件： id \t cb \t umi
+    # Open one TSV writer per shard: id\tcb\tumi.
     writers = []
     for i in range(n_shards):
         fp = os.path.join(tmpdir, f"r1.{i:04d}.tsv")
@@ -174,20 +174,19 @@ def pass2_r2_to_buckets(r2_path: str, buffer_mb: int, n_shards: int, tmpdir: str
     return total
 
 # ---------- pass 3: join buckets and output ----------
-def join_one_bucket(i: int, tmpdir: str, out_part: str, valid_map, sample: str,
-                    gzip_level: int, buffer_mb: int) -> Tuple[str, int, int]:
+def join_one_bucket(i: int, tmpdir: str, out_part: str, valid_map, sample: str) -> Tuple[str, int, int]:
     """
-    读 r1.i.tsv -> dict; 流式扫描 r2.i.tsv，命中的输出到 out_part（FASTQ）。
-    返回 (out_part_path, r1_ids, out_kept)
+    Load r1.i.tsv into a dict; stream-scan r2.i.tsv and write matched records to out_part (FASTQ).
+    Return (out_part_path, r1_ids, out_kept).
     """
     r1_path = os.path.join(tmpdir, f"r1.{i:04d}.tsv")
     r2_path = os.path.join(tmpdir, f"r2.{i:04d}.tsv")
     if not os.path.exists(r1_path):
-        # 该桶没有 R1，直接返回空文件
+        # No R1 file for this shard; return an empty output file.
         open(out_part, "wb").close()
         return out_part, 0, 0
 
-    # 1) 加载 R1 映射
+    # 1) Load the R1 mapping.
     r1_map = {}
     with open(r1_path, "rt", buffering=1024*1024) as fh:
         for ln in fh:
@@ -195,7 +194,7 @@ def join_one_bucket(i: int, tmpdir: str, out_part: str, valid_map, sample: str,
             r1_map[rid] = (cb, umi)
     r1_ids = len(r1_map)
 
-    # 2) 扫描 R2 并输出
+    # 2) Scan R2 and write output.
     kept = 0
     with open(out_part, "wt", buffering=1024*1024) as out, open(r2_path, "rt", buffering=1024*1024) as fh:
         for ln in fh:
@@ -217,22 +216,22 @@ def join_one_bucket(i: int, tmpdir: str, out_part: str, valid_map, sample: str,
             kept += 1
     return out_part, r1_ids, kept
 
-# 顶层包装：供 multiprocessing 使用（lambda 不可被 pickle）
+# Top-level wrapper for multiprocessing (lambda cannot be pickled).
 def _join_bucket_star(args):
     return join_one_bucket(*args)
 
 def join_buckets_parallel(n_shards: int, tmpdir: str, out_path: str,
                           threads: int, valid_map, sample: str,
                           buffer_mb: int, gzip_level: int):
-    # 为每个桶准备一个 part 输出文件
+    # Prepare one part output file per shard.
     part_files = [os.path.join(tmpdir, f"part.{i:04d}.fq") for i in range(n_shards)]
-    args_list = [(i, tmpdir, part_files[i], valid_map, sample, gzip_level, buffer_mb) for i in range(n_shards)]
+    args_list = [(i, tmpdir, part_files[i], valid_map, sample) for i in range(n_shards)]
 
     total_r1_ids = 0
     total_kept   = 0
 
     if threads <= 1 or n_shards == 1:
-        # 串行回退（便于调试 / 低开销）
+        # Serial fallback (useful for debugging / low overhead).
         for a in args_list:
             _, r1_ids, kept = join_one_bucket(*a)
             total_r1_ids += r1_ids
@@ -250,17 +249,17 @@ def join_buckets_parallel(n_shards: int, tmpdir: str, out_path: str,
         total_r1_ids = sum(x[1] for x in stats)
         total_kept   = sum(x[2] for x in stats)
 
-    # 合并 part → 最终输出
+    # Merge part files into final output.
     out = open_out_text(out_path, buffer_mb, gzip_level)
     try:
-        for pf in part_files:  # 固定按桶序写入，保证确定性
+        for pf in part_files:  # Write in shard order for deterministic output.
             with open(pf, "rt", buffering=1024*1024) as fh:
                 shutil.copyfileobj(fh, out, length=1024*1024*8)
     finally:
         if out is not sys.stdout:
             out.close()
 
-    # 清理 part
+    # Clean up part files.
     for pf in part_files:
         try: os.remove(pf)
         except Exception: pass
@@ -270,48 +269,48 @@ def join_buckets_parallel(n_shards: int, tmpdir: str, out_path: str,
 # ---------- main ----------
 def main():
     ap = argparse.ArgumentParser(
-        description="以 R1 为准做 read-id 连接：从 R1 切 CB/UMI，贴到匹配的 R2 readname，仅输出 R1 存在的 read id。"
+        description="Join by read-id using R1 as the source of CB/UMI and annotate matching R2 read names; output only read IDs present in R1."
     )
     ap.add_argument("--r1", required=True)
     ap.add_argument("--r2", required=True)
-    ap.add_argument("--out", required=True, help="输出 FASTQ（可 .gz 或 '-'）")
-    ap.add_argument("--model", required=True, help="如 B20U10 或 字面 BBBB...UUU...")
-    ap.add_argument("--valid_list", help="CB<tab>细胞身份；提供则仅保留名单内 CB（需配合 --sample）")
-    ap.add_argument("--sample", help="样本ID；与 --valid_list 同用，在 readname 写 DB:Z:<sample>_<细胞身份>")
+    ap.add_argument("--out", required=True, help="Output FASTQ (.gz or '-').")
+    ap.add_argument("--model", required=True, help="Model, e.g. B20U10 or literal BBBB...UUU...")
+    ap.add_argument("--valid_list", help="CB<tab>cell label; if provided, keep only CBs in this list (requires --sample).")
+    ap.add_argument("--sample", help="Sample ID; used with --valid_list to write DB:Z:<sample>_<cell_label> in read names.")
 
-    ap.add_argument("--threads", type=int, default=8, help="并行桶连接线程数（pass3）")
-    ap.add_argument("--shards",  type=int, default=256, help="哈希分桶数（越大越省内存，占用更多小文件）")
-    ap.add_argument("--buffer_mb", type=int, default=32, help="读写缓冲(MB)")
-    ap.add_argument("--gzip_level", type=int, default=1, help="输出 .gz 压缩等级（1=最快）")
-    ap.add_argument("--uppercase", type=int, default=1, help="是否将模型窗口转大写(1/0)")
-    ap.add_argument("--tmpdir", default="./", help="临时目录")
+    ap.add_argument("--threads", type=int, default=8, help="Parallel shard-join threads (pass3).")
+    ap.add_argument("--shards",  type=int, default=256, help="Number of hash shards (higher uses less memory but creates more small files).")
+    ap.add_argument("--buffer_mb", type=int, default=32, help="Read/write buffer size (MB).")
+    ap.add_argument("--gzip_level", type=int, default=1, help="Output .gz compression level (1=fastest).")
+    ap.add_argument("--uppercase", type=int, default=1, help="Uppercase model window (1/0).")
+    ap.add_argument("--tmpdir", default="./", help="Temporary directory.")
     args = ap.parse_args()
 
     # parse model
     try:
         cb_blocks, umi_blocks, model_len = parse_model(args.model)
     except Exception as e:
-        log(f"ERROR: 解析模型失败：{e}"); sys.exit(2)
+        log(f"ERROR: Failed to parse model: {e}"); sys.exit(2)
     cb_len = sum(ln for _, ln in cb_blocks)
     umi_len = sum(ln for _, ln in umi_blocks)
     if cb_len == 0 or umi_len == 0:
-        log("ERROR: 模型中必须同时包含 B（CB）与 U（UMI）区段。"); sys.exit(2)
+        log("ERROR: Model must include both B (CB) and U (UMI) segments."); sys.exit(2)
 
     # valid list
     valid_map = None
     if args.valid_list:
         if not args.sample:
-            log("ERROR: 提供 --valid_list 时必须同时提供 --sample"); sys.exit(2)
+            log("ERROR: --sample is required when --valid_list is provided"); sys.exit(2)
         valid_map = load_valid_map(args.valid_list, cb_len)
         if not valid_map:
-            log("WARN: 有效名单为空或没有匹配长度的 CB，读段将全部被过滤。")
+            log("WARN: Valid list is empty or contains no CB with matching length; all reads will be filtered.")
 
     # temp dir
     if args.tmpdir:
         base_tmpdir = os.path.abspath(args.tmpdir)
         os.makedirs(base_tmpdir, exist_ok=True)
         if not os.path.isdir(base_tmpdir):
-            log(f"ERROR: tmpdir 不是目录：{base_tmpdir}"); sys.exit(2)
+            log(f"ERROR: tmpdir is not a directory: {base_tmpdir}"); sys.exit(2)
         tmpdir = tempfile.mkdtemp(prefix="r1join_tmp_", dir=base_tmpdir)
     else:
         tmpdir = tempfile.mkdtemp(prefix="r1join_tmp_")
