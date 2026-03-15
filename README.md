@@ -1,31 +1,47 @@
-# IsoPrep
+<p align="center">
+  <img src="assets/isoprep-logo.svg" alt="IsoPrep logo" width="180" />
+</p>
 
-IsoPrep is a lightweight long-read single-cell preprocessing toolkit.
-It orchestrates FASTQ-level preprocessing, barcode/UMI annotation, alignment,
-and final BAM/QC materialization for a single sample.
+<h1 align="center">IsoPrep</h1>
 
-## Features
+<p align="center">
+  <strong>A lightweight and production-friendly long-read single-cell preprocessing toolkit.</strong>
+</p>
 
-- Multi-FASTQ single-sample orchestration.
-- Modular pipeline stages (`cutadapt`/`tsoclip`/`seqkit`/barcode scan/alignment).
-- Unified logging with environment-driven log level and timestamp control.
-- QC aggregation from stage summaries and BAM statistics.
-- Optional cleanup to keep only final deliverables.
+<p align="center">
+  FASTQ preprocessing • CB/UMI annotation • alignment • BAM + QC delivery
+</p>
 
-## Project layout
+---
 
-- `IsoPrep/runner.py`: main CLI orchestration logic.
-- `IsoPrep/stages.py`: stage-level command wrappers.
-- `IsoPrep/config.py`: dataclass-based defaults and executable paths.
-- `IsoPrep/utils.py`: shell/filesystem helper utilities.
-- `IsoPrep/logging.py`: centralized logger setup.
-- `IsoPrep/bin/`: command-line utilities used by the pipeline (barcode scan, sharding helpers, etc.).
+## Why IsoPrep
 
-## Naming
+IsoPrep is designed for **single-sample long-read scRNA/scISO workflows** where you need a clear, reproducible, and scriptable preprocessing path from raw FASTQ inputs to final BAM/QC artifacts.
 
-- Distribution/package name for installation is `isoprep` (lowercase).
-- Python source package remains `IsoPrep` (module import path).
-- CLI entrypoint is `isoprep`.
+It provides:
+
+- **End-to-end orchestration** for multi-FASTQ single-sample processing.
+- **Modular stage execution** (`cutadapt`, `tsoclip`, `seqkit`, barcode scan, alignment).
+- **Consistent logging** with environment-controlled verbosity and timestamps.
+- **QC aggregation** across stage summaries and alignment statistics.
+- **Optional cleanup mode** for compact final deliverables.
+
+## Installation
+
+### From source (recommended)
+
+```bash
+git clone <your-repo-url>
+cd IsoPrep
+pip install .
+```
+
+### Requirements
+
+- Python `>=3.8`
+- Runtime Python dependency:
+  - `pysam`
+- External tools used by pipeline stages should be available in `PATH` (for example: `cutadapt`, `seqkit`, `samtools`, `minimap2`, and stage-related helper tools).
 
 ## Quick start
 
@@ -39,23 +55,27 @@ isoprep \
   --threads 16
 ```
 
-## Key outputs
+## Output structure
 
-Under `<workdir>/<sample>/01.data`:
+Primary outputs are generated under:
+
+```text
+<workdir>/<sample>/01.data/
+```
+
+Key files:
 
 - `<sample>.bam`
 - `<sample>.bam.bai`
 - `<sample>.qc.tsv`
 
+## Command-line interface
 
-## CLI parameters
-
-Installed console entry points:
+### Installed entry point
 
 - `isoprep` → `IsoPrep.runner:main`
-- `isoprep-run-sharded` → `IsoPrep.bin.run_sharded:main`
 
-### `isoprep`
+### `isoprep` parameters
 
 | Parameter | Required | Default | Description |
 |---|---|---|---|
@@ -78,16 +98,6 @@ Installed console entry points:
 | `--no-gene` | No | `False` | Legacy compatibility flag (unused in no-UMI flow). |
 | `--fast-h1` | No | `False` | Legacy compatibility flag (unused in no-UMI flow). |
 
-### `isoprep-run-sharded`
-
-| Parameter | Required | Default | Description |
-|---|---|---|---|
-| `--outdir` | Yes | - | Output directory for shard results and merged BAM. |
-| `--bam-dir` | Yes | - | Directory containing input BAM files to shard. |
-| `--shards` | No | `32` | Number of shard partitions. |
-| `--threads` | No | `32` | Threads for `samtools merge/sort`. |
-| `--keep-shards` | No | `False` | Keep per-shard directories after final merged output. |
-
 ## QC metric definitions
 
 `<sample>.qc.tsv` currently includes:
@@ -101,9 +111,11 @@ Installed console entry points:
 | `valid_reads` | Reads kept after `add_cb_umi_db` join/filter | `tmp/<fq>/01.barcode/*.summary.txt` | Prefer `model.retain.mask.drc.merge.valid.fq.gz.summary.txt`, otherwise scan `*.summary.txt` for `OUT_KEPT`/`OUT_KEPT(joined)` | Summed across FASTQs |
 | `aligned_mapped_reads` | Primary mapped aligned reads | `tmp/<fq>/02.align/*.bam` (or recursive fallback) | `samtools view -c -F 2308` (exclude unmapped/secondary/supplementary) | Summed across FASTQs |
 
-> Note: metrics are stage-specific and not guaranteed to be strictly monotonic across columns.
+> Note: these metrics are stage-specific and are not guaranteed to be strictly monotonic across columns.
 
 ## Logging
+
+Environment variables:
 
 - `SCLR_LOG_LEVEL` (default: `INFO`)
 - `SCLR_LOG_TIME` (default: `1`)
@@ -113,3 +125,22 @@ Example:
 ```bash
 SCLR_LOG_LEVEL=DEBUG SCLR_LOG_TIME=0 isoprep ...
 ```
+
+## Project layout
+
+- `IsoPrep/runner.py`: CLI orchestration logic.
+- `IsoPrep/stages.py`: stage command wrappers.
+- `IsoPrep/config.py`: dataclass-based defaults and executable paths.
+- `IsoPrep/utils.py`: shell/filesystem helpers.
+- `IsoPrep/logging.py`: centralized logger setup.
+- `IsoPrep/bin/`: utility scripts used by the pipeline.
+
+## Naming conventions
+
+- Distribution/package name for installation: `isoprep` (lowercase).
+- Python source package: `IsoPrep`.
+- Main CLI entry point: `isoprep`.
+
+## License
+
+Released under the terms of the `LICENSE` file in this repository.
