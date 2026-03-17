@@ -27,7 +27,7 @@ It provides:
 ### From source (recommended)
 
 ```bash
-git clone <your-repo-url>
+git clone https://github.com/dawangran/IsoPrep.git
 cd IsoPrep
 pip install .
 ```
