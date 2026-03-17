@@ -37,7 +37,7 @@ pip install .
 - Python `>=3.8`
 - Runtime Python dependency:
   - `pysam`
-- External tools used by pipeline stages should be available in `PATH` (for example: `cutadapt`, `seqkit`, `samtools`, `minimap2`, and stage-related helper tools).
+- External tools used by pipeline stages should be available in `PATH` (for example: `cutadapt`, `tsoclip`, `seqkit`, `samtools`, `minimap2`, and stage-related helper tools).
 
 ## Quick start
 
