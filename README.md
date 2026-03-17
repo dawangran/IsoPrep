@@ -139,4 +139,4 @@ SCLR_LOG_LEVEL=DEBUG SCLR_LOG_TIME=0 isoprep ...
 
 ## License
 
-Released under the terms of the `LICENSE` file in this repository.
+Released under a **Research Use Only** license. See the `LICENSE` file for full terms and commercial-use restrictions.
